@@ -23,7 +23,7 @@ use librad::{
     net::{
         discovery::{self, Discovery as _},
         peer::{self, Peer},
-        protocol::{self, io},
+        protocol::{self, io, request_pull},
         Network,
     },
     paths::Paths,
@@ -59,6 +59,18 @@ struct Options {
 struct BoostrapNode {
     peer_id: PeerId,
     addr: String,
+}
+
+#[derive(Clone, Debug, Default)]
+struct AllowAll {}
+
+impl request_pull::Guard for AllowAll {
+    type Error = std::convert::Infallible;
+    type Output = bool;
+
+    fn guard(&self, _: &PeerId, _: &git::Urn) -> Result<Self::Output, Self::Error> {
+        Ok(true)
+    }
 }
 
 fn parse_bootstrap_node(s: &str) -> Result<BoostrapNode, String> {
@@ -111,6 +123,7 @@ async fn main() {
                 network: opts.network,
                 replication: Default::default(),
                 rate_limits: Default::default(),
+                request_pull: Default::default(),
             },
             storage: Default::default(),
         })
@@ -200,7 +213,7 @@ where
     }
 }
 
-async fn stdout_stats(peer: Peer<SecretKey>) -> anyhow::Result<Void> {
+async fn stdout_stats(peer: Peer<SecretKey, AllowAll>) -> anyhow::Result<Void> {
     loop {
         tokio::time::sleep(Duration::from_secs(10)).await;
         let stats = peer.stats().await;
@@ -208,7 +221,10 @@ async fn stdout_stats(peer: Peer<SecretKey>) -> anyhow::Result<Void> {
     }
 }
 
-async fn graphite_stats(peer: Peer<SecretKey>, graphite_addr: SocketAddr) -> anyhow::Result<Void> {
+async fn graphite_stats(
+    peer: Peer<SecretKey, AllowAll>,
+    graphite_addr: SocketAddr,
+) -> anyhow::Result<Void> {
     tracing::debug!("stats collector");
 
     let peer_id_str = peer.peer_id().to_string();
